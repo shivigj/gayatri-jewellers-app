@@ -1265,10 +1265,12 @@ function completeBill(){
 
   dbPush('sales',bill).then(async saleRef=>{
     await Promise.all(soldKeys.map(k=>dbRemove('inventory/'+k)));
+    // Use bill date (respects backdating) for all linked records
+    const billDateStr=bill.date.split('T')[0];
     // Save pure gold sale (reduces gold stock in accounts app)
     if(hasPureGold&&pureGoldItem){
       await dbPush('pure_gold_sales',{
-        date:new Date().toISOString().split('T')[0],
+        date:billDateStr,
         customer:name,phone,
         weight:pureGoldItem.gw,billW:pureGoldItem._billW,
         rate:parseFloat(rates?.gold24)||0,
@@ -1276,10 +1278,10 @@ function completeBill(){
         saleKey:saleRef?.key||''
       });
     }
-    // Save customer gold receipts (when customer gives 24K gold)
+    // Save customer gold receipts (when customer gives 24K gold as payment)
     if(_payMode==='pure24'&&payInfo.gold24Weight>0){
       await dbPush('customer_gold_receipts',{
-        date:new Date().toISOString().split('T')[0],
+        date:billDateStr,
         customer:name,phone,
         weight:payInfo.gold24Weight,rate:payInfo.gold24Rate,value:payInfo.gold24Value,
         saleTotal:grand
@@ -1660,7 +1662,12 @@ function inPeriod(ds){
   if(reportPeriod==='daily')return d.toDateString()===now.toDateString();
   if(reportPeriod==='weekly'){const df=(now-d)/864e5;return df>=0&&df<7;}
   if(reportPeriod==='monthly')return d.getMonth()===now.getMonth()&&d.getFullYear()===now.getFullYear();
-  if(reportPeriod==='quarterly')return Math.floor(d.getMonth()/3)===Math.floor(now.getMonth()/3)&&d.getFullYear()===now.getFullYear();
+  if(reportPeriod==='quarterly'){
+    // FY quarters: Q1=Apr-Jun, Q2=Jul-Sep, Q3=Oct-Dec, Q4=Jan-Mar
+    const fyQ=m=>(m>=3&&m<=5)?1:(m>=6&&m<=8)?2:(m>=9&&m<=11)?3:4;
+    const fyYear=m=>m>=3?now.getFullYear():now.getFullYear()-1;
+    return fyQ(d.getMonth())===fyQ(now.getMonth())&&fyYear(d.getMonth())===fyYear(now.getMonth());
+  }
   return d.getFullYear()===now.getFullYear();
 }
 
